@@ -1,337 +1,344 @@
-!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Asociados P Y A - Control Total</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;800&display=swap');
-        
-        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f1f5f9; }
-        
-        .login-gradient {
-            background: radial-gradient(circle at top right, #1e293b, #0f172a);
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Asociados P&A - Sistema Cloud</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, onAuthStateChanged, signInWithCustomToken, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, doc, setDoc, getDoc, collection, query, onSnapshot, addDoc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    // --- CONFIGURACIÓN DE FIREBASE ---
+    const firebaseConfig = JSON.parse(__firebase_config);
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'asociadospya-29fd6';
+
+    // --- VARIABLES DE ESTADO ---
+    let pedidos = [];
+    let gastos = [];
+    let vendedores = [];
+    let numeroSiguiente = 1;
+    let isAdmin = false;
+    let user = null;
+
+    const FINAL_STATES = ["Entregado", "Retirado", "Completado"];
+    const ADMIN_EMAIL = "admin@asociadospa.cl";
+
+    const $ = (id) => document.getElementById(id);
+    const money = (n = 0) => "$" + Number(n || 0).toLocaleString("es-CL");
+    const today = () => new Date().toISOString().slice(0, 10);
+
+    // --- AUTENTICACIÓN Y CARGA DE DATOS ---
+    const initApp = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
         }
+      } catch (e) { console.error("Error Auth:", e); }
 
-        .card-shadow { box-shadow: 0 10px 40px -10px rgba(0,0,0,0.05); }
-
-        /* Fix para evitar parpadeos en el login */
-        #app-content { display: none; }
-        #login-screen { display: flex; }
-
-        .btn-primary {
-            background: #2563eb;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      onAuthStateChanged(auth, (u) => {
+        user = u;
+        if (user) {
+          startRealtimeSync();
         }
-        
-        .btn-primary:hover { background: #1d4ed8; transform: translateY(-2px); }
+      });
+    };
 
-        .input-custom {
-            background: #f8fafc;
-            border: 2px solid #e2e8f0;
-            transition: all 0.2s;
-        }
+    function startRealtimeSync() {
+      const publicPath = ['artifacts', appId, 'public', 'data'];
 
-        .input-custom:focus {
-            border-color: #2563eb;
-            background: white;
-            outline: none;
-            ring: 0;
-        }
-    </style>
+      // Pedidos
+      onSnapshot(collection(db, ...publicPath, 'pedidos'), (snap) => {
+        pedidos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        renderPedidos();
+        renderDashboard();
+      }, (err) => console.error("Error pedidos:", err));
+
+      // Vendedores
+      onSnapshot(collection(db, ...publicPath, 'vendedores'), (snap) => {
+        vendedores = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        actualizarUIvendedores();
+      }, (err) => console.error("Error vendedores:", err));
+
+      // Contador
+      onSnapshot(doc(db, ...publicPath, 'config', 'contador'), (d) => {
+        numeroSiguiente = d.exists() ? d.data().valor : 1;
+      });
+    }
+
+    // --- FUNCIONES DB ---
+    async function dbSavePedido(data, id = null) {
+      if (!user) return;
+      const path = ['artifacts', appId, 'public', 'data', 'pedidos'];
+      if (id) {
+        await updateDoc(doc(db, ...path, id), data);
+      } else {
+        const num = numeroSiguiente;
+        await addDoc(collection(db, ...path), { ...data, numeroPedido: num, createdAt: new Date().toISOString() });
+        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'contador'), { valor: num + 1 });
+      }
+    }
+
+    async function dbSaveVendedor(nombre) {
+      if (!user) return;
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'vendedores'), { nombre, activo: true });
+    }
+
+    // --- LOGICA DE NAVEGACION ---
+    window.switchPage = (id) => {
+      document.querySelectorAll(".page").forEach(p => p.classList.add("hidden"));
+      $(id).classList.remove("hidden");
+      document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
+      document.querySelector(`[data-page="${id}"]`)?.classList.add("active");
+    };
+
+    window.login = () => {
+      const email = $("loginEmail").value.trim();
+      const pass = $("loginPassword").value;
+      
+      // Validación simple para el acceso de tu hermano y socios
+      if (email === ADMIN_EMAIL && pass === "123456") {
+        isAdmin = true;
+        $("loginView").classList.add("hidden");
+        $("appView").classList.remove("hidden");
+        switchPage("dashboardPage");
+      } else {
+        $("loginError").textContent = "Correo o contraseña incorrectos.";
+      }
+    };
+
+    // --- RENDERIZADO ---
+    function renderDashboard() {
+      const ingresos = pedidos.filter(p => FINAL_STATES.includes(p.estado)).reduce((a, b) => a + Number(b.total || 0), 0);
+      const abonos = pedidos.filter(p => !FINAL_STATES.includes(p.estado) && p.estado !== "Cancelado").reduce((a, b) => a + Number(b.abono || 0), 0);
+      
+      $("dashIngresos").textContent = money(ingresos);
+      $("dashAbonos").textContent = money(abonos);
+      
+      const hoy = pedidos.filter(p => p.fechaEntrega === today() && p.estado !== "Cancelado");
+      $("tablaHoy").innerHTML = hoy.map(p => `
+        <tr>
+          <td>#${String(p.numeroPedido).padStart(2, '0')}</td>
+          <td>${p.cliente}</td>
+          <td>${p.descripcion}</td>
+          <td><span class="badge">${p.estado}</span></td>
+          <td>${p.fechaEntrega}</td>
+        </tr>
+      `).join("") || '<tr><td colspan="5" style="text-align:center">No hay pedidos para hoy</td></tr>';
+    }
+
+    function renderPedidos() {
+      const filtroC = $("filtroCliente").value.toLowerCase();
+      const filtrados = pedidos.filter(p => p.cliente.toLowerCase().includes(filtroC))
+                               .sort((a,b) => b.numeroPedido - a.numeroPedido);
+
+      $("tablaPedidos").innerHTML = filtrados.map(p => `
+        <tr>
+          <td>${String(p.numeroPedido).padStart(2, '0')}</td>
+          <td>${p.cliente}</td>
+          <td>${p.vendedor}</td>
+          <td>${money(p.total)}</td>
+          <td>${money(p.saldo)}</td>
+          <td><span class="badge">${p.estado}</span></td>
+          <td>
+            <div class="action-group">
+              <button onclick="window.editPedido('${p.id}')">Editar</button>
+            </div>
+          </td>
+        </tr>
+      `).join("");
+    }
+
+    function actualizarUIvendedores() {
+      const opts = vendedores.map(v => `<option value="${v.nombre}">${v.nombre}</option>`).join("");
+      $("vendedor").innerHTML = opts;
+      $("listaVendedores").innerHTML = vendedores.map(v => `<li>${v.nombre}</li>`).join("");
+    }
+
+    window.savePedidoAction = async (e) => {
+      e.preventDefault();
+      const id = $("pedidoDocId").value;
+      const valor = Number($("valorPedido").value);
+      const delivery = Number($("valorDelivery").value);
+      const abono = Number($("abono").value);
+      const total = valor + delivery;
+
+      const data = {
+        cliente: $("cliente").value,
+        vendedor: $("vendedor").value,
+        descripcion: $("descripcion").value,
+        fechaEntrega: $("fechaEntrega").value,
+        valorPedido: valor,
+        valorDelivery: delivery,
+        total: total,
+        abono: abono,
+        saldo: Math.max(0, total - abono),
+        estado: $("estado").value,
+        tipoEntrega: $("tipoEntrega").value
+      };
+
+      await dbSavePedido(data, id);
+      $("pedidoForm").reset();
+      $("pedidoDocId").value = "";
+      switchPage("pedidosPage");
+    };
+
+    window.editPedido = (id) => {
+      const p = pedidos.find(x => x.id === id);
+      if (!p) return;
+      $("pedidoDocId").value = p.id;
+      $("cliente").value = p.cliente;
+      $("vendedor").value = p.vendedor;
+      $("descripcion").value = p.descripcion;
+      $("fechaEntrega").value = p.fechaEntrega;
+      $("valorPedido").value = p.valorPedido;
+      $("valorDelivery").value = p.valorDelivery;
+      $("abono").value = p.abono;
+      $("estado").value = p.estado;
+      switchPage("nuevoPedidoPage");
+    };
+
+    window.agregarVendedor = async () => {
+      const n = $("nuevoVendedorNombre").value.trim();
+      if(n) {
+        await dbSaveVendedor(n);
+        $("nuevoVendedorNombre").value = "";
+      }
+    };
+
+    window.onload = () => {
+      initApp();
+      $("fechaEntrega").value = today();
+    };
+  </script>
+
+  <style>
+    :root{--bg:#f5f7fb;--card:#fff;--line:#e5e7eb;--panel:#111827;--text:#111827;--muted:#6b7280;--primary:#2563eb;--danger:#dc2626}
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,sans-serif}
+    .hidden{display:none!important}
+    .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center}
+    .login-card{background:var(--card);padding:30px;border-radius:16px;box-shadow:0 10px 25px rgba(0,0,0,0.05);width:100%;max-width:400px}
+    .app{display:flex;min-height:100vh}
+    .sidebar{width:260px;background:var(--panel);color:#fff;padding:20px;display:flex;flex-direction:column;gap:10px}
+    .sidebar button{background:transparent;border:none;color:#ccc;text-align:left;padding:12px;border-radius:8px;cursor:pointer;font-size:15px}
+    .sidebar button.active{background:var(--primary);color:#fff}
+    .content{flex:1;padding:30px;overflow-y:auto}
+    .card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:20px;margin-bottom:30px}
+    .stat-card{background:var(--card);padding:20px;border-radius:12px;border:1px solid var(--line)}
+    .stat-card h3{margin:0;font-size:14px;color:var(--muted)}
+    .stat-card p{margin:10px 0 0;font-size:24px;font-weight:bold}
+    .panel{background:var(--card);padding:25px;border-radius:12px;border:1px solid var(--line);margin-bottom:20px}
+    table{width:100%;border-collapse:collapse}
+    th{text-align:left;padding:12px;border-bottom:2px solid var(--line);font-size:13px;color:var(--muted)}
+    td{padding:12px;border-bottom:1px solid var(--line);font-size:14px}
+    .badge{background:#ebf5ff;color:var(--primary);padding:4px 10px;border-radius:20px;font-size:12px}
+    input,select,textarea{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;margin-top:5px}
+    button{padding:10px 20px;border-radius:8px;border:none;background:var(--primary);color:#fff;cursor:pointer}
+    .action-group{display:flex;gap:5px}
+  </style>
 </head>
-<body class="min-h-screen">
+<body>
 
-    <!-- Pantalla de Inicio de Sesión -->
-    <div id="login-screen" class="fixed inset-0 login-gradient flex items-center justify-center z-[9999]">
-        <div class="bg-white p-10 rounded-[2.5rem] shadow-2xl max-w-md w-full mx-4">
-            <div class="text-center mb-10">
-                <div class="w-20 h-20 bg-blue-600 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-2xl shadow-blue-500/40">
-                    <i class="fas fa-key text-white text-3xl"></i>
-                </div>
-                <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight">Acceso Privado</h1>
-                <p class="text-slate-400 text-sm font-semibold mt-2 uppercase tracking-widest">Asociados P Y A</p>
-            </div>
-            
-            <form id="login-form" class="space-y-6">
-                <div>
-                    <label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 tracking-widest ml-1">Contraseña de Sistema</label>
-                    <input type="password" id="password-input" placeholder="····" 
-                        class="w-full px-6 py-5 input-custom rounded-2xl text-center text-2xl font-black tracking-[0.5em]">
-                </div>
-                <div id="login-error" class="hidden text-red-600 text-xs font-bold text-center bg-red-50 py-3 rounded-xl border border-red-100">
-                    <i class="fas fa-exclamation-circle mr-1"></i> Contraseña incorrecta
-                </div>
-                <button type="submit" class="w-full py-5 btn-primary text-white font-bold rounded-2xl shadow-xl shadow-blue-200 uppercase text-xs tracking-widest">
-                    Entrar al Sistema
-                </button>
-            </form>
+<div id="loginView" class="login-wrap">
+  <div class="login-card">
+    <h2 style="margin:0">Asociados P&A</h2>
+    <p style="color:var(--muted)">Sistema en la Nube</p>
+    <div style="margin-top:15px">
+      <label>Correo de Acceso</label>
+      <input id="loginEmail" type="email" value="admin@asociadospa.cl">
+    </div>
+    <div style="margin-top:15px">
+      <label>Contraseña</label>
+      <input id="loginPassword" type="password" value="123456">
+    </div>
+    <p id="loginError" style="color:var(--danger);font-size:13px;margin-top:10px"></p>
+    <button onclick="login()" style="width:100%;margin-top:20px">Entrar al Sistema</button>
+  </div>
+</div>
+
+<div id="appView" class="app hidden">
+  <aside class="sidebar">
+    <h2 style="margin:0 0 20px 10px">P&A Cloud</h2>
+    <button class="nav-btn active" data-page="dashboardPage" onclick="switchPage('dashboardPage')">Dashboard</button>
+    <button class="nav-btn" data-page="pedidosPage" onclick="switchPage('pedidosPage')">Pedidos</button>
+    <button class="nav-btn" data-page="nuevoPedidoPage" onclick="switchPage('nuevoPedidoPage')">Nuevo Pedido</button>
+    <button class="nav-btn" data-page="vendedoresPage" onclick="switchPage('vendedoresPage')">Vendedores</button>
+    <button onclick="location.reload()" style="margin-top:auto">Cerrar Sesión</button>
+  </aside>
+
+  <main class="content">
+    <div id="dashboardPage" class="page">
+      <h1>Dashboard</h1>
+      <div class="card-grid">
+        <div class="stat-card"><h3>Ingresos Totales</h3><p id="dashIngresos">$0</p></div>
+        <div class="stat-card"><h3>Saldos Pendientes</h3><p id="dashAbonos">$0</p></div>
+      </div>
+      <div class="panel">
+        <h3>Pedidos para Hoy</h3>
+        <table>
+          <thead><tr><th>N°</th><th>Cliente</th><th>Descripción</th><th>Estado</th><th>Entrega</th></tr></thead>
+          <tbody id="tablaHoy"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="pedidosPage" class="page hidden">
+      <h1>Lista de Pedidos</h1>
+      <div class="panel">
+        <input id="filtroCliente" placeholder="Buscar por nombre de cliente..." oninput="renderPedidos()">
+      </div>
+      <div class="panel">
+        <table>
+          <thead><tr><th>N°</th><th>Cliente</th><th>Vendedor</th><th>Total</th><th>Saldo</th><th>Estado</th><th>Acciones</th></tr></thead>
+          <tbody id="tablaPedidos"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="nuevoPedidoPage" class="page hidden">
+      <h1>Gestionar Pedido</h1>
+      <div class="panel">
+        <form id="pedidoForm" onsubmit="savePedidoAction(event)">
+          <input type="hidden" id="pedidoDocId">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px">
+            <div><label>Cliente</label><input id="cliente" required></div>
+            <div><label>Vendedor</label><select id="vendedor"></select></div>
+            <div style="grid-column:span 2"><label>Descripción</label><textarea id="descripcion" required></textarea></div>
+            <div><label>Fecha Entrega</label><input type="date" id="fechaEntrega" required></div>
+            <div><label>Estado</label><select id="estado"><option>Agendado</option><option>En producción</option><option>Entregado</option><option>Cancelado</option></select></div>
+            <div><label>Valor Producto</label><input type="number" id="valorPedido" value="0"></div>
+            <div><label>Costo Envío</label><input type="number" id="valorDelivery" value="0"></div>
+            <div><label>Abono</label><input type="number" id="abono" value="0"></div>
+            <div><label>Tipo Entrega</label><select id="tipoEntrega"><option>Retiro</option><option>Domicilio</option></select></div>
+          </div>
+          <button type="submit" style="margin-top:20px;width:100%">Guardar Pedido</button>
+        </form>
+      </div>
+    </div>
+
+    <div id="vendedoresPage" class="page hidden">
+      <h1>Socios y Vendedores</h1>
+      <div class="panel">
+        <h3>Agregar Nuevo Vendedor</h3>
+        <div style="display:flex;gap:10px">
+          <input id="nuevoVendedorNombre" placeholder="Nombre del socio o hermano">
+          <button onclick="agregarVendedor()">Agregar</button>
         </div>
+      </div>
+      <div class="panel">
+        <h3>Vendedores Registrados</h3>
+        <ul id="listaVendedores"></ul>
+      </div>
     </div>
+  </main>
+</div>
 
-    <!-- Contenido Principal -->
-    <div id="app-content">
-        <!-- Navegación -->
-        <header class="bg-white border-b border-slate-200 px-8 py-4 sticky top-0 z-40">
-            <div class="max-w-7xl mx-auto flex justify-between items-center">
-                <div class="flex items-center gap-4">
-                    <div class="bg-blue-600 p-2 rounded-xl"><i class="fas fa-briefcase text-white"></i></div>
-                    <h2 class="text-lg font-extrabold text-slate-800">Panel Gestión P&A</h2>
-                </div>
-                <div class="flex items-center gap-4">
-                    <span id="reloj" class="text-sm font-bold text-slate-500 bg-slate-100 px-4 py-2 rounded-full">00:00:00</span>
-                    <button onclick="logout()" class="text-red-500 hover:bg-red-50 p-3 rounded-xl transition-all">
-                        <i class="fas fa-power-off"></i>
-                    </button>
-                </div>
-            </div>
-        </header>
-
-        <!-- Main Dashboard -->
-        <main class="max-w-7xl mx-auto p-8">
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
-                <div class="bg-white p-6 rounded-3xl card-shadow border border-slate-100">
-                    <p class="text-[10px] font-bold text-slate-400 uppercase mb-1">Ventas Mes</p>
-                    <p id="stat-ventas" class="text-2xl font-extrabold text-green-600">$0.00</p>
-                </div>
-                <div class="bg-white p-6 rounded-3xl card-shadow border border-slate-100">
-                    <p class="text-[10px] font-bold text-slate-400 uppercase mb-1">Gastos</p>
-                    <p id="stat-gastos" class="text-2xl font-extrabold text-red-600">$0.00</p>
-                </div>
-                <div class="bg-white p-6 rounded-3xl card-shadow border border-slate-100">
-                    <p class="text-[10px] font-bold text-slate-400 uppercase mb-1">Pendiente Cobro</p>
-                    <p id="stat-pendientes" class="text-2xl font-extrabold text-blue-600">0</p>
-                </div>
-                <div class="bg-slate-900 p-6 rounded-3xl shadow-xl">
-                    <p class="text-[10px] font-bold text-slate-400 uppercase mb-1">Caja Fuerte</p>
-                    <p id="stat-caja" class="text-2xl font-extrabold text-white">$0.00</p>
-                </div>
-            </div>
-
-            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                <!-- Registro -->
-                <div class="lg:col-span-4 space-y-6">
-                    <div class="bg-white p-8 rounded-[2rem] card-shadow">
-                        <h3 class="text-sm font-black uppercase tracking-widest text-slate-800 mb-6">Nuevo Pedido</h3>
-                        <form id="order-form" class="space-y-4">
-                            <input type="text" id="cliente" required placeholder="Nombre del Cliente" class="w-full px-5 py-4 input-custom rounded-xl font-bold">
-                            <input type="text" id="producto" required placeholder="Producto / Detalle" class="w-full px-5 py-4 input-custom rounded-xl font-bold">
-                            <input type="number" id="monto" required placeholder="Monto $" class="w-full px-5 py-4 input-custom rounded-xl font-black text-blue-600 text-xl">
-                            <select id="tipo" class="w-full px-5 py-4 input-custom rounded-xl font-bold">
-                                <option value="Retiro">Retiro en Local</option>
-                                <option value="Domicilio">Envío a Domicilio</option>
-                            </select>
-                            <button type="submit" class="w-full py-5 btn-primary text-white font-bold rounded-2xl">Registrar</button>
-                        </form>
-                    </div>
-
-                    <div class="bg-white p-8 rounded-[2rem] card-shadow border-t-4 border-red-500">
-                        <h3 class="text-sm font-black uppercase tracking-widest text-slate-800 mb-6">Salida de Dinero</h3>
-                        <form id="expense-form" class="space-y-4">
-                            <input type="text" id="exp-desc" required placeholder="Concepto del gasto" class="w-full px-5 py-4 input-custom rounded-xl font-bold">
-                            <input type="number" id="exp-monto" required placeholder="Monto $" class="w-full px-5 py-4 input-custom rounded-xl font-black text-red-600">
-                            <button type="submit" class="w-full py-4 bg-red-500 text-white font-bold rounded-2xl">Confirmar Gasto</button>
-                        </form>
-                    </div>
-                </div>
-
-                <!-- Lista -->
-                <div class="lg:col-span-8">
-                    <div class="bg-white rounded-[2rem] card-shadow overflow-hidden">
-                        <div class="bg-slate-50 px-8 py-5 border-b border-slate-100 flex justify-between items-center">
-                            <h3 class="text-xs font-black uppercase tracking-widest text-slate-500">Pedidos Activos</h3>
-                            <button onclick="cerrarMes()" class="text-[10px] font-bold bg-slate-900 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors">CERRAR MES ACTUAL</button>
-                        </div>
-                        <div id="lista-pedidos" class="divide-y divide-slate-50 min-h-[400px]">
-                            <!-- Se llena dinámicamente -->
-                        </div>
-                    </div>
-
-                    <div class="mt-8 bg-white rounded-[2rem] card-shadow p-8">
-                         <h3 class="text-xs font-black uppercase tracking-widest text-slate-500 mb-6">Historial del Mes</h3>
-                         <div class="overflow-x-auto">
-                             <table class="w-full text-left text-sm">
-                                 <thead class="text-slate-400 font-bold border-b">
-                                     <tr>
-                                         <th class="pb-4">Fecha</th>
-                                         <th class="pb-4">Detalle</th>
-                                         <th class="pb-4 text-right">Monto</th>
-                                     </tr>
-                                 </thead>
-                                 <tbody id="historial-tabla" class="divide-y divide-slate-50">
-                                     <!-- Se llena dinámicamente -->
-                                 </tbody>
-                             </table>
-                         </div>
-                    </div>
-                </div>
-            </div>
-        </main>
-    </div>
-
-    <script>
-        const CLAVE = "1234";
-        
-        // Estado Global
-        let db = {
-            pedidos: JSON.parse(localStorage.getItem('pa_pedidos')) || [],
-            historial: JSON.parse(localStorage.getItem('pa_historial')) || [],
-            caja: parseFloat(localStorage.getItem('pa_caja')) || 0
-        };
-
-        // --- SISTEMA DE AUTENTICACIÓN ---
-        const loginForm = document.getElementById('login-form');
-        const loginScreen = document.getElementById('login-screen');
-        const appContent = document.getElementById('app-content');
-        const passInput = document.getElementById('password-input');
-        const loginError = document.getElementById('login-error');
-
-        function checkAuth() {
-            const isAuth = sessionStorage.getItem('pa_auth') === 'true';
-            if (isAuth) {
-                loginScreen.style.display = 'none';
-                appContent.style.display = 'block';
-                render();
-            } else {
-                loginScreen.style.display = 'flex';
-                appContent.style.display = 'none';
-            }
-        }
-
-        loginForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            if (passInput.value === CLAVE) {
-                sessionStorage.setItem('pa_auth', 'true');
-                loginError.classList.add('hidden');
-                checkAuth();
-            } else {
-                loginError.classList.remove('hidden');
-                passInput.value = "";
-                passInput.focus();
-            }
-        });
-
-        function logout() {
-            sessionStorage.removeItem('pa_auth');
-            location.reload();
-        }
-
-        // --- LÓGICA DE NEGOCIO ---
-        function save() {
-            localStorage.setItem('pa_pedidos', JSON.stringify(db.pedidos));
-            localStorage.setItem('pa_historial', JSON.stringify(db.historial));
-            localStorage.setItem('pa_caja', db.caja.toString());
-        }
-
-        document.getElementById('order-form').addEventListener('submit', (e) => {
-            e.preventDefault();
-            const nuevo = {
-                id: Date.now(),
-                cliente: document.getElementById('cliente').value,
-                producto: document.getElementById('producto').value,
-                monto: parseFloat(document.getElementById('monto').value),
-                tipo: document.getElementById('tipo').value,
-                fecha: new Date().toLocaleString()
-            };
-            db.pedidos.push(nuevo);
-            save();
-            render();
-            e.target.reset();
-        });
-
-        document.getElementById('expense-form').addEventListener('submit', (e) => {
-            e.preventDefault();
-            const gasto = {
-                id: Date.now(),
-                desc: document.getElementById('exp-desc').value,
-                monto: parseFloat(document.getElementById('exp-monto').value),
-                tipo: 'EGRESO',
-                fecha: new Date().toLocaleString()
-            };
-            db.historial.push(gasto);
-            save();
-            render();
-            e.target.reset();
-        });
-
-        function cobrar(id) {
-            const index = db.pedidos.findIndex(p => p.id === id);
-            const p = db.pedidos[index];
-            db.historial.push({ ...p, tipo: 'INGRESO' });
-            db.pedidos.splice(index, 1);
-            save();
-            render();
-        }
-
-        function cerrarMes() {
-            if(!confirm("¿Deseas cerrar el mes? El balance pasará a la Caja Fuerte.")) return;
-            let balance = 0;
-            db.historial.forEach(h => {
-                if(h.tipo === 'INGRESO') balance += h.monto;
-                else balance -= h.monto;
-            });
-            db.caja += balance;
-            db.historial = [];
-            save();
-            render();
-            alert("Mes cerrado. Saldo transferido a la caja.");
-        }
-
-        // --- RENDER ---
-        function render() {
-            const lista = document.getElementById('lista-pedidos');
-            const tabla = document.getElementById('historial-tabla');
-            
-            lista.innerHTML = '';
-            tabla.innerHTML = '';
-
-            let totalV = 0, totalG = 0;
-
-            db.pedidos.forEach(p => {
-                lista.innerHTML += `
-                    <div class="flex items-center justify-between px-8 py-6 hover:bg-slate-50 transition-colors">
-                        <div>
-                            <p class="font-black text-slate-800 uppercase text-sm">${p.cliente}</p>
-                            <p class="text-xs text-slate-400 font-bold">${p.producto} • <span class="text-blue-500">${p.tipo}</span></p>
-                        </div>
-                        <div class="flex items-center gap-6">
-                            <span class="text-lg font-black text-slate-900">$${p.monto.toLocaleString()}</span>
-                            <button onclick="cobrar(${p.id})" class="bg-green-500 text-white px-5 py-2 rounded-xl text-[10px] font-bold uppercase hover:bg-green-600">Cobrar</button>
-                        </div>
-                    </div>
-                `;
-            });
-
-            db.historial.forEach(h => {
-                const isIngreso = h.tipo === 'INGRESO';
-                if(isIngreso) totalV += h.monto; else totalG += h.monto;
-                
-                tabla.innerHTML += `
-                    <tr>
-                        <td class="py-4 text-slate-400 text-xs">${h.fecha.split(',')[0]}</td>
-                        <td class="py-4 font-bold text-slate-700 uppercase text-xs">${isIngreso ? h.cliente : h.desc}</td>
-                        <td class="py-4 text-right font-black ${isIngreso ? 'text-green-600' : 'text-red-500'}">
-                            ${isIngreso ? '+' : '-'}$${h.monto.toLocaleString()}
-                        </td>
-                    </tr>
-                `;
-            });
-
-            document.getElementById('stat-ventas').innerText = `$${totalV.toLocaleString()}`;
-            document.getElementById('stat-gastos').innerText = `$${totalG.toLocaleString()}`;
-            document.getElementById('stat-pendientes').innerText = db.pedidos.length;
-            document.getElementById('stat-caja').innerText = `$${db.caja.toLocaleString()}`;
-        }
-
-        // Reloj
-        setInterval(() => {
-            document.getElementById('reloj').innerText = new Date().toLocaleTimeString();
-        }, 1000);
-
-        // Inicializar
-        checkAuth();
-    </script>
 </body>
 </html>
