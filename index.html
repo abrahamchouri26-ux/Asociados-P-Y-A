@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+ <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
@@ -164,14 +164,19 @@
   }
 
   function login(){
-    const e = $("loginEmail").value, p = $("loginPassword").value;
+    const e = $("loginEmail").value.trim(); 
+    const p = $("loginPassword").value.trim();
+    
+    // ACCESO DE ADMINISTRADOR
     if(e==="admin@asociadospa.cl" && p==="123456"){
       currentUser="Admin"; isAdmin=true;
-    } else {
-      const v = vendedoresGlobal.find(x => x.nombre.toLowerCase()===e.split("@")[0].toLowerCase() && p==="123456");
-      if(v){ currentUser=v.nombre; isAdmin=false; }
-    }
-    if(currentUser) initApp(); else $("loginMsg").textContent = "Credenciales inválidas";
+      initApp();
+      return;
+    } 
+
+    const v = vendedoresGlobal.find(x => x.nombre.toLowerCase()===e.split("@")[0].toLowerCase() && p==="123456");
+    if(v){ currentUser=v.nombre; isAdmin=false; initApp(); }
+    else { $("loginMsg").textContent = "Credenciales inválidas"; }
   }
 
   function initApp(){
@@ -220,7 +225,6 @@
       data.num = pedidosGlobal.length + 1;
       if(data.estado === "Finalizado") updateCaja(data.valorPedido + data.valorDelivery - data.abono);
       newRef.set(data);
-      db.ref("historial").push({fecha: new Date().toISOString(), desc: `Nuevo Pedido #${data.num}`, monto: data.valorPedido});
     }
     resetPedidoForm(); switchPage("pedidosPage");
   }
@@ -322,7 +326,6 @@
     $("totalDeuda").value = t;
   }
 
-  // Binds iniciales
   $("loginBtn").onclick = login;
   $("logoutBtn").onclick = () => location.reload();
   $("btnIrNuevoPedido").onclick = () => switchPage("nuevoPedidoPage");
@@ -340,7 +343,6 @@
   document.querySelectorAll(".nav-btn").forEach(b => b.onclick = () => switchPage(b.dataset.page));
   
   setDefaultDates();
-  // Carga inicial de datos si ya está logueado o para tener vendedoresGlobal listos
   db.ref("vendedores").once("value", s => {
     const val = s.val(); vendedoresGlobal = val ? Object.keys(val).map(k => ({id:k, ...val[k]})) : [];
     updateVendedorSelects();
