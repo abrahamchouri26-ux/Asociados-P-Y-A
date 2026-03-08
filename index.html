@@ -15,7 +15,6 @@
         .tab-active { border-bottom: 3px solid #2563eb; color: #2563eb; }
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 10px; }
-        .filter-btn-active { background-color: #2563eb !important; color: white !important; }
         .modal-overlay { background-color: rgba(0,0,0,0.6); backdrop-filter: blur(4px); }
         .fade-in { animation: fadeIn 0.5s ease-in-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
@@ -67,10 +66,7 @@
                     <p id="total-balance" class="text-xl font-bold text-blue-700">$0.00</p>
                 </div>
                 <div class="bg-slate-900 p-5 rounded-2xl shadow-xl text-white border-l-4 border-yellow-500">
-                    <div class="flex justify-between">
-                        <p class="text-[9px] text-yellow-500 uppercase font-bold">Reserva Histórica</p>
-                        <button onclick="gestionarCajaFuerte()"><i class="fas fa-cog"></i></button>
-                    </div>
+                    <p class="text-[9px] text-yellow-500 uppercase font-bold">Reserva Histórica</p>
                     <p id="total-caja-fuerte" class="text-xl font-bold">$0.00</p>
                 </div>
             </div>
@@ -83,13 +79,12 @@
                     <form id="order-form" class="space-y-4">
                         <input type="text" id="cliente" required placeholder="Cliente" class="w-full p-2 bg-gray-50 border rounded-lg text-sm">
                         <input type="text" id="nombre-pedido" required placeholder="Detalle del pedido" class="w-full p-2 bg-gray-50 border rounded-lg text-sm">
-                        <input type="text" id="monto-visual" required placeholder="Monto $" oninput="formatearMontoInput(this)" class="w-full p-2 bg-gray-50 border rounded-lg font-bold text-blue-600">
-                        <input type="hidden" id="monto-real">
+                        <input type="number" step="0.01" id="monto-real" required placeholder="Monto $" class="w-full p-2 bg-gray-50 border rounded-lg font-bold text-blue-600">
                         <div class="flex gap-2">
-                            <label class="flex-1 p-2 bg-gray-50 border rounded-lg text-center cursor-pointer has-[:checked]:bg-blue-50 has-[:checked]:border-blue-500">
+                            <label class="flex-1 p-2 bg-gray-50 border rounded-lg text-center cursor-pointer has-[:checked]:bg-blue-50">
                                 <input type="radio" name="tipo-retiro" value="Retiro" checked class="hidden"> <span class="text-[9px] font-bold">RETIRO</span>
                             </label>
-                            <label class="flex-1 p-2 bg-gray-50 border rounded-lg text-center cursor-pointer has-[:checked]:bg-blue-50 has-[:checked]:border-blue-500">
+                            <label class="flex-1 p-2 bg-gray-50 border rounded-lg text-center cursor-pointer has-[:checked]:bg-blue-50">
                                 <input type="radio" name="tipo-retiro" value="Domicilio" class="hidden"> <span class="text-[9px] font-bold">ENVÍO</span>
                             </label>
                         </div>
@@ -101,8 +96,7 @@
                     <h2 class="text-lg font-semibold mb-4 text-red-700"><i class="fas fa-wallet mr-2"></i>Gasto Extra</h2>
                     <form id="egreso-form" class="space-y-4">
                         <input type="text" id="egreso-motivo" required placeholder="Motivo" class="w-full p-2 bg-gray-50 border rounded-lg text-sm">
-                        <input type="text" id="egreso-monto-visual" required placeholder="Monto $" oninput="formatearMontoInput(this)" class="w-full p-2 bg-gray-50 border rounded-lg font-bold text-red-600">
-                        <input type="hidden" id="egreso-monto-real">
+                        <input type="number" step="0.01" id="egreso-monto-real" required placeholder="Monto $" class="w-full p-2 bg-gray-50 border rounded-lg font-bold text-red-600">
                         <button type="submit" class="w-full py-3 bg-red-600 text-white font-bold rounded-xl uppercase text-[10px]">Descontar</button>
                     </form>
                 </section>
@@ -121,20 +115,12 @@
                     <div class="flex border-b bg-gray-50">
                         <button onclick="cambiarPestana('ingresos')" id="btn-tab-ingresos" class="flex-1 py-4 text-[10px] font-bold tab-active">INGRESOS</button>
                         <button onclick="cambiarPestana('egresos')" id="btn-tab-egresos" class="flex-1 py-4 text-[10px] font-bold text-gray-400">EGRESOS</button>
-                        <button onclick="cambiarPestana('historico')" id="btn-tab-historico" class="flex-1 py-4 text-[10px] font-bold text-gray-400">HISTORIAL</button>
                     </div>
                     <div id="cont-ingresos" class="order-container">
-                        <table class="w-full text-left text-xs">
-                            <tbody id="lista-ingresos" class="divide-y divide-gray-50"></tbody>
-                        </table>
+                        <table class="w-full text-left text-xs"><tbody id="lista-ingresos" class="divide-y divide-gray-50"></tbody></table>
                     </div>
                     <div id="cont-egresos" class="order-container hidden">
-                        <table class="w-full text-left text-xs">
-                            <tbody id="lista-egresos" class="divide-y divide-gray-50"></tbody>
-                        </table>
-                    </div>
-                    <div id="cont-historico" class="order-container hidden p-4">
-                        <div id="lista-meses-cerrados" class="grid gap-2"></div>
+                        <table class="w-full text-left text-xs"><tbody id="lista-egresos" class="divide-y divide-gray-50"></tbody></table>
                     </div>
                 </section>
             </div>
@@ -144,7 +130,7 @@
     <div id="modal-cierre" class="fixed inset-0 modal-overlay z-[100] hidden flex items-center justify-center p-4">
         <div class="bg-white rounded-3xl p-8 max-w-sm w-full text-center">
             <h3 class="text-xl font-bold">¿Cerrar el mes?</h3>
-            <p class="text-sm text-gray-500 mt-2">Los datos se guardarán en la reserva histórica.</p>
+            <p class="text-sm text-gray-500 mt-2">Los datos se borrarán y el balance irá a Reserva Histórica.</p>
             <div class="flex gap-2 mt-6">
                 <button onclick="document.getElementById('modal-cierre').classList.add('hidden')" class="flex-1 p-3 bg-gray-100 rounded-xl font-bold">NO</button>
                 <button onclick="ejecutarCierreMes()" class="flex-1 p-3 bg-blue-600 text-white rounded-xl font-bold">SÍ, CERRAR</button>
@@ -153,22 +139,16 @@
     </div>
 
     <script>
-        // CONFIGURACIÓN FIREBASE
-        const firebaseConfig = {
-            databaseURL: "https://asociadospya-29fd6-default-rtdb.firebaseio.com/"
-        };
+        const firebaseConfig = { databaseURL: "https://asociadospya-29fd6-default-rtdb.firebaseio.com/" };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        // VARIABLES
         const SECRET_PASSWORD = "1234";
-        let sesionActiva = sessionStorage.getItem('asociados_auth') === 'true';
 
-        // LOGIN
         document.getElementById('login-form').addEventListener('submit', (e) => {
             e.preventDefault();
-            if (document.getElementById('password-input').value === SECRET_PASSWORD) {
-                sesionActiva = true;
+            const pass = document.getElementById('password-input').value;
+            if (pass === SECRET_PASSWORD) {
                 sessionStorage.setItem('asociados_auth', 'true');
                 verificarAuth();
             } else {
@@ -176,44 +156,31 @@
             }
         });
 
+        function verificarAuth() {
+            const isAuth = sessionStorage.getItem('asociados_auth') === 'true';
+            document.getElementById('login-screen').classList.toggle('hidden', isAuth);
+            document.getElementById('app-content').classList.toggle('hidden', !isAuth);
+        }
+
         function cerrarSesion() {
             sessionStorage.removeItem('asociados_auth');
             location.reload();
         }
 
-        function verificarAuth() {
-            document.getElementById('login-screen').classList.toggle('hidden', sesionActiva);
-            document.getElementById('app-content').classList.toggle('hidden', !sesionActiva);
-        }
+        function formatCurrency(num) { return Number(num).toLocaleString('en-US', { minimumFractionDigits: 2 }); }
 
-        // FORMATEO
-        function formatCurrency(num) { return num.toLocaleString('en-US', { minimumFractionDigits: 2 }); }
-        function formatearMontoInput(input) {
-            let val = input.value.replace(/[^0-9.]/g, '');
-            let parts = val.split('.');
-            if (parts.length > 2) parts.pop();
-            input.value = parts.join('.');
-            document.getElementById(input.id.replace('-visual', '-real')).value = val;
-        }
-
-        // ESCUCHA DE DATOS EN TIEMPO REAL
         db.ref().on('value', (snapshot) => {
             const data = snapshot.val() || {};
             renderizarTodo(data);
         });
 
-        // ACCIONES
         document.getElementById('order-form').addEventListener('submit', (e) => {
             e.preventDefault();
-            const monto = parseFloat(document.getElementById('monto-real').value);
-            if (isNaN(monto)) return;
-            
             db.ref('pedidosActivos').push({
                 cliente: document.getElementById('cliente').value,
                 detalle: document.getElementById('nombre-pedido').value,
-                monto: monto,
+                monto: parseFloat(document.getElementById('monto-real').value),
                 entrega: document.querySelector('input[name="tipo-retiro"]:checked').value,
-                vendedor: "",
                 fecha: new Date().toLocaleString()
             });
             e.target.reset();
@@ -221,47 +188,44 @@
 
         document.getElementById('egreso-form').addEventListener('submit', (e) => {
             e.preventDefault();
-            const monto = parseFloat(document.getElementById('egreso-monto-real').value);
-            db.ref('historial').push({ tipo: 'EGRESO', descripcion: document.getElementById('egreso-motivo').value, monto: monto, fecha: new Date().toLocaleString() });
+            db.ref('historial').push({ 
+                tipo: 'EGRESO', 
+                descripcion: document.getElementById('egreso-motivo').value, 
+                monto: parseFloat(document.getElementById('egreso-monto-real').value), 
+                fecha: new Date().toLocaleString() 
+            });
             e.target.reset();
         });
 
         function cobrarPedido(key, p) {
-            db.ref('historial').push({ ...p, tipo: 'INGRESO', fechaPago: new Date().toLocaleString() });
+            db.ref('historial').push({ ...p, tipo: 'INGRESO' });
             db.ref('pedidosActivos/' + key).remove();
         }
 
-        function borrarPedido(key) { if(confirm('¿Borrar?')) db.ref('pedidosActivos/' + key).remove(); }
+        function borrarPedido(key) { if(confirm('¿Borrar pedido?')) db.ref('pedidosActivos/' + key).remove(); }
 
         function ejecutarCierreMes() {
             db.ref().once('value', (snapshot) => {
                 const data = snapshot.val() || {};
                 const historial = data.historial || {};
-                let ing = 0, egr = 0;
+                let balance = 0;
                 Object.values(historial).forEach(h => {
-                    if(h.tipo === 'INGRESO') ing += h.monto;
-                    else egr += h.monto;
+                    if(h.tipo === 'INGRESO') balance += h.monto;
+                    else balance -= h.monto;
                 });
-                const balance = ing - egr;
-                const nombreMes = new Date().toLocaleString('es-ES', { month: 'long', year: 'numeric' });
-                
-                db.ref('historicoMeses').push({ mes: nombreMes, balance: balance, fecha: new Date().toLocaleString() });
                 db.ref('cajaFuerte').set((data.cajaFuerte || 0) + balance);
                 db.ref('historial').remove();
                 document.getElementById('modal-cierre').classList.add('hidden');
             });
         }
 
-        // RENDERIZADO
         function renderizarTodo(data) {
             const bandeja = document.getElementById('bandeja-gestion');
             const lIng = document.getElementById('lista-ingresos');
             const lEgr = document.getElementById('lista-egresos');
-            
             bandeja.innerHTML = ''; lIng.innerHTML = ''; lEgr.innerHTML = '';
             let tIng = 0, tEgr = 0;
 
-            // Pedidos Activos
             const pedidos = data.pedidosActivos || {};
             Object.keys(pedidos).forEach(key => {
                 const p = pedidos[key];
@@ -274,46 +238,43 @@
                         <span class="text-green-400 font-bold">$${formatCurrency(p.monto)}</span>
                         <div class="flex gap-2">
                             <button onclick="borrarPedido('${key}')" class="text-slate-400"><i class="fas fa-trash"></i></button>
-                            <button onclick="cobrarPedido('${key}', ${JSON.stringify(p).replace(/"/g, '&quot;')})" class="bg-blue-600 px-3 py-1 rounded text-[10px] font-bold uppercase">Cobrar</button>
+                            <button onclick='cobrarPedido("${key}", ${JSON.stringify(p)})' class="bg-blue-600 px-3 py-1 rounded text-[10px] font-bold uppercase">Cobrar</button>
                         </div>
-                    </div>
-                `;
+                    </div>`;
                 bandeja.appendChild(div);
             });
 
-            // Historial Mes
             const historial = data.historial || {};
             Object.values(historial).forEach(h => {
                 const tr = document.createElement('tr');
                 if(h.tipo === 'INGRESO') {
                     tIng += h.monto;
-                    tr.innerHTML = <td class="p-3 font-bold uppercase">${h.cliente}</td><td class="p-3 text-right text-green-600 font-bold">$${formatCurrency(h.monto)}</td>;
+                    tr.innerHTML = `<td class="p-3 font-bold uppercase">${h.cliente}</td><td class="p-3 text-right text-green-600 font-bold">$${formatCurrency(h.monto)}</td>`;
                     lIng.appendChild(tr);
                 } else {
                     tEgr += h.monto;
-                    tr.innerHTML = <td class="p-3 uppercase">${h.descripcion}</td><td class="p-3 text-right text-red-600 font-bold">-$${formatCurrency(h.monto)}</td>;
+                    tr.innerHTML = `<td class="p-3 uppercase">${h.descripcion}</td><td class="p-3 text-right text-red-600 font-bold">-$${formatCurrency(h.monto)}</td>`;
                     lEgr.appendChild(tr);
                 }
             });
 
-            // Totales
-            document.getElementById('total-ingresos').innerText = $${formatCurrency(tIng)};
-            document.getElementById('total-egresos').innerText = $${formatCurrency(tEgr)};
-            document.getElementById('total-balance').innerText = $${formatCurrency(tIng - tEgr)};
-            document.getElementById('total-caja-fuerte').innerText = $${formatCurrency(data.cajaFuerte || 0)};
+            document.getElementById('total-ingresos').innerText = `$${formatCurrency(tIng)}`;
+            document.getElementById('total-egresos').innerText = `$${formatCurrency(tEgr)}`;
+            document.getElementById('total-balance').innerText = `$${formatCurrency(tIng - tEgr)}`;
+            document.getElementById('total-caja-fuerte').innerText = `$${formatCurrency(data.cajaFuerte || 0)}`;
             document.getElementById('badge-pendientes').innerText = Object.keys(pedidos).length;
         }
 
         function cambiarPestana(t) {
-            ['ingresos', 'egresos', 'historico'].forEach(id => {
-                document.getElementById('cont-' + id).classList.toggle('hidden', id !== t);
-                document.getElementById('btn-tab-' + id).classList.toggle('tab-active', id === t);
-            });
+            document.getElementById('cont-ingresos').classList.toggle('hidden', t !== 'ingresos');
+            document.getElementById('cont-egresos').classList.toggle('hidden', t !== 'egresos');
+            document.getElementById('btn-tab-ingresos').classList.toggle('tab-active', t === 'ingresos');
+            document.getElementById('btn-tab-egresos').classList.toggle('tab-active', t === 'egresos');
         }
 
         function confirmarCierreMes() { document.getElementById('modal-cierre').classList.remove('hidden'); }
-
-        window.onload = verificarAuth;
+        
+        verificarAuth();
     </script>
 </body>
 </html>
